@@ -1,7 +1,7 @@
 import numpy as np
 
 # Given data
-x = np.array([2, 4, 5, 8, 10])
+x = np.array([2, 4, 6, 8, 10])
 y = np.array([23, 93, 259, 596, 1071])
 
 # Calculate the forward differences
