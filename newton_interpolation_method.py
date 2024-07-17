@@ -1,13 +1,13 @@
 import numpy as np
 
 # Given data
-x = np.array([1,2,3,4,5,6,7,8])
-y = np.array([3010, 3424, 3802, 4105, 4472, 4771, 5051, 5315])
+x = np.array([2, 4, 5, 8, 10])
+y = np.array([23, 93, 259, 596, 1071])
 
-# Calculate the first, second, third, and fourth order differences
-def calculate_differences(y):
+# Calculate the forward differences
+def calculate_forward_differences(y, stop_order):
     diffs = [y]
-    while len(diffs[-1]) > 1:
+    while len(diffs[-1]) > 1 and len(diffs) <= stop_order:
         diffs.append(np.diff(diffs[-1]))
     return diffs
 
@@ -16,63 +16,82 @@ def has_consistent_alternating_signs(diffs):
     signs = np.sign(diffs)
     return all(signs[i] * signs[i + 1] < 0 for i in range(len(signs) - 1))
 
-# Calculate differences for original data
-diffs_original = calculate_differences(y)
-
 # Determine the order at which to stop based on consistent alternating signs
-stop_order = None
-for i in range(1, len(diffs_original)):
-    if has_consistent_alternating_signs(diffs_original[i]):
-        stop_order = i
-        break
+stop_order = next((i for i, diff in enumerate(calculate_forward_differences(y, len(y))) if has_consistent_alternating_signs(diff)), None)
 
-# Find the index of the largest change in the second order differences
-index = np.argmax(np.abs(diffs_original[2])) + 1
+# Calculate differences up to the stop order
+diffs = calculate_forward_differences(y, stop_order)
 
-# Print the original value
-print(f"Original value at x={x[index]}: y={y[index]}")
+# Find the index of the value with the highest absolute magnitude in the last forward difference
+error_index = np.argmax(np.abs(diffs[-1]))
 
-# Create a new array for the corrected values
-y_corrected = y.copy()
+# Identify the range of x values that correspond to the error
+error_range = x[error_index:error_index+stop_order+1]
 
-# Correct the value by averaging its neighbors
-y_corrected[index] = (y_corrected[index - 1] + y_corrected[index + 1]) / 2
-
-# Print the corrected value
-print(f"Corrected value at x={x[index]}: y={y_corrected[index]}")
-
-# Calculate differences for corrected data
-diffs_corrected = calculate_differences(y_corrected)
-
-# Print the differences for corrected data
-diffs_corrected_output = {f"Order {i} differences": diff for i, diff in enumerate(diffs_corrected)}
-
-
-
-original_table = {
-    'x': x,
-    'y (Original)': y,
-    'y (Corrected)': y_corrected,
-    'Δy': diffs_original[1] if stop_order is None or stop_order >= 1 else None,
-    'Δ²y': diffs_original[2] if stop_order is None or stop_order >= 2 else None,
-    'Δ³y': diffs_original[3] if stop_order is None or stop_order >= 3 else None,
-    'Δ⁴y': diffs_original[4] if stop_order is None or stop_order >= 4 else None
-}
-
-# Print the corrected table
-corrected_table = {
-    'x': x,
-    'y (Original)': y,
-    'y (Corrected)': y_corrected,
-    'Δy': diffs_corrected[1] if stop_order is None or stop_order >= 1 else None,
-    'Δ²y': diffs_corrected[2] if stop_order is None or stop_order >= 2 else None,
-    'Δ³y': diffs_corrected[3] if stop_order is None or stop_order >= 3 else None,
-    'Δ⁴y': diffs_corrected[4] if stop_order is None or stop_order >= 4 else None
-}
-
-print(original_table)
-
-print(diffs_corrected_output)
-
-print(corrected_table)
+# Print the differences, stop order, and error range
+for i, diff in enumerate(diffs):
+    print(f"Order {i} differences: {diff}")
 print(f"Stop order: {stop_order}")
+print(f"The range of x values that correspond to the highest value in the {stop_order}th forward difference is {error_range}.")
+
+# Compute the divided difference table
+def newton_divided_difference(x, y):
+    n = len(x)
+    divided_diff = np.zeros((n, n))
+    divided_diff[:, 0] = y
+
+    for j in range(1, n):
+        for i in range(n - j):
+            divided_diff[i, j] = (divided_diff[i + 1, j - 1] - divided_diff[i, j - 1]) / (x[i + j] - x[i])
+    
+    return np.trunc(divided_diff)
+
+divided_diff_table = newton_divided_difference(x, y)
+
+# Print the divided difference table
+print("Divided Difference Table:")
+print(divided_diff_table)
+
+# Generate the interpolation polynomial
+def newton_polynomial(x, divided_diff):
+    n = len(x)
+    coefficients = divided_diff[0, :]
+    
+    def polynomial(value):
+        result = coefficients[0]
+        term = 1.0
+        for i in range(1, n):
+            term *= (value - x[i - 1])
+            result += coefficients[i] * term
+        return result
+    
+    return polynomial
+
+polynomial = newton_polynomial(x, divided_diff_table)
+
+# Example: Evaluate the polynomial at given values in the error range
+values_to_interpolate = error_range
+interpolated_values = [polynomial(val) for val in values_to_interpolate]
+
+# Calculate the differences and find the value with the largest difference
+differences = np.abs(interpolated_values - y[error_index:error_index+stop_order+1])
+max_diff_index = np.argmax(differences)
+value_with_error = error_range[max_diff_index]
+
+# Print the results
+print(f"\nInterpolated values at x = {values_to_interpolate}: {interpolated_values}")
+print(f"Differences between original and interpolated values: {differences}")
+print(f"The value with the largest difference is {value_with_error}.")
+
+# Get the equation of the interpolation
+def get_polynomial_equation(coefficients, x):
+    n = len(coefficients)
+    equation = f"{coefficients[0]}"
+    for i in range(1, n):
+        term = " * ".join([f"(x - {x[j]})" for j in range(i)])
+        equation += f" + {coefficients[i]} * {term}"
+    return equation
+
+coefficients = divided_diff_table[0, :]
+equation = get_polynomial_equation(coefficients, x)
+print(f"\nInterpolation Polynomial Equation: P(x) = {equation}")
